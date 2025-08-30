@@ -5,8 +5,9 @@ defmodule IPCrypt.Kiasu do
 
   import Bitwise
 
+  # Helper function for Galois field multiplication
   # AES S-box
-  @sbox [
+  @sbox {
     0x63,
     0x7C,
     0x77,
@@ -263,10 +264,10 @@ defmodule IPCrypt.Kiasu do
     0x54,
     0xBB,
     0x16
-  ]
+  }
 
   # AES inverse S-box
-  @inv_sbox [
+  @inv_sbox {
     0x52,
     0x09,
     0x6A,
@@ -523,19 +524,48 @@ defmodule IPCrypt.Kiasu do
     0x21,
     0x0C,
     0x7D
-  ]
+  }
 
   # AES round constants
-  @rcon [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1B, 0x36]
+  @rcon {0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1B, 0x36}
 
-  # Precomputed multiplication tables for AES operations
-  @mul2 for x <- 0..255,
-            do:
-              Bitwise.bxor(
-                :binary.decode_unsigned(<<x <<< 1>>),
-                if((x &&& 0x80) != 0, do: 0x1B, else: 0)
-              )
-  @mul3 for x <- 0..255, do: Bitwise.bxor(Enum.at(@mul2, x), x)
+  # Precomputed multiplication tables for AES operations as tuples
+  @mul2 List.to_tuple(
+          for x <- 0..255 do
+            Bitwise.bxor(x <<< 1 &&& 0xFF, if((x &&& 0x80) != 0, do: 0x1B, else: 0))
+          end
+        )
+  @mul3 List.to_tuple(for x <- 0..255, do: Bitwise.bxor(elem(@mul2, x), x))
+
+  # Precompute multiplication tables for inverse mix columns
+  # We can't use the gmul function in module attributes, so we use helper module
+  defmodule GaloisTables do
+    @moduledoc false
+
+    def gmul_table(multiplier) do
+      for x <- 0..255 do
+        gmul_calc(x, multiplier)
+      end
+      |> List.to_tuple()
+    end
+
+    defp gmul_calc(a, b) do
+      Enum.reduce(0..7, {0, a, b}, fn _, {p, a_val, b_val} ->
+        p = if (b_val &&& 1) != 0, do: Bitwise.bxor(p, a_val), else: p
+        hi_bit = (a_val &&& 0x80) != 0
+        a_val = a_val <<< 1 &&& 0xFF
+        a_val = if hi_bit, do: Bitwise.bxor(a_val, 0x1B), else: a_val
+        b_val = b_val >>> 1
+        {p &&& 0xFF, a_val, b_val}
+      end)
+      |> elem(0)
+    end
+  end
+
+  @mul9 GaloisTables.gmul_table(0x09)
+  @mul11 GaloisTables.gmul_table(0x0B)
+  @mul13 GaloisTables.gmul_table(0x0D)
+  @mul14 GaloisTables.gmul_table(0x0E)
 
   @doc """
   Encrypts using KIASU-BC construction.
@@ -556,7 +586,7 @@ defmodule IPCrypt.Kiasu do
     # Initial round
     state =
       plaintext
-      |> xor_bytes(Enum.at(round_keys, 0))
+      |> xor_bytes(elem(round_keys, 0))
       |> xor_bytes(padded_tweak)
 
     # Main rounds
@@ -567,7 +597,7 @@ defmodule IPCrypt.Kiasu do
         |> sub_bytes()
         |> shift_rows()
         |> mix_columns()
-        |> xor_bytes(Enum.at(round_keys, round))
+        |> xor_bytes(elem(round_keys, round))
         |> xor_bytes(padded_tweak)
       end)
 
@@ -575,7 +605,7 @@ defmodule IPCrypt.Kiasu do
     state
     |> sub_bytes()
     |> shift_rows()
-    |> xor_bytes(Enum.at(round_keys, 10))
+    |> xor_bytes(elem(round_keys, 10))
     |> xor_bytes(padded_tweak)
   end
 
@@ -603,7 +633,7 @@ defmodule IPCrypt.Kiasu do
     # Initial round (inverse final round)
     state =
       ciphertext
-      |> xor_bytes(Enum.at(round_keys, 10))
+      |> xor_bytes(elem(round_keys, 10))
       |> xor_bytes(padded_tweak)
       |> inv_shift_rows()
       |> inv_sub_bytes()
@@ -613,7 +643,7 @@ defmodule IPCrypt.Kiasu do
       9..1//-1
       |> Enum.reduce(state, fn round, acc ->
         acc
-        |> xor_bytes(Enum.at(round_keys, round))
+        |> xor_bytes(elem(round_keys, round))
         |> xor_bytes(padded_tweak)
         |> inv_mix_columns()
         |> inv_shift_rows()
@@ -622,7 +652,7 @@ defmodule IPCrypt.Kiasu do
 
     # Final round (inverse initial round)
     state
-    |> xor_bytes(Enum.at(round_keys, 0))
+    |> xor_bytes(elem(round_keys, 0))
     |> xor_bytes(padded_tweak)
   end
 
@@ -633,26 +663,22 @@ defmodule IPCrypt.Kiasu do
 
   # Helper functions
 
+  # Binary XOR using :crypto
+  defp xor_bytes(a, b) do
+    :crypto.exor(a, b)
+  end
+
+  # S-box substitution working directly with binaries
   defp sub_bytes(state) do
-    state
-    |> :binary.bin_to_list()
-    |> Enum.map(&Enum.at(@sbox, &1))
-    |> :binary.list_to_bin()
+    for <<byte <- state>>, into: <<>> do
+      <<elem(@sbox, byte)>>
+    end
   end
 
   defp inv_sub_bytes(state) do
-    state
-    |> :binary.bin_to_list()
-    |> Enum.map(&Enum.at(@inv_sbox, &1))
-    |> :binary.list_to_bin()
-  end
-
-  defp xor_bytes(a, b) do
-    a
-    |> :binary.bin_to_list()
-    |> Enum.zip(:binary.bin_to_list(b))
-    |> Enum.map(fn {x, y} -> Bitwise.bxor(x, y) end)
-    |> :binary.list_to_bin()
+    for <<byte <- state>>, into: <<>> do
+      <<elem(@inv_sbox, byte)>>
+    end
   end
 
   defp rot_word(word) do
@@ -663,32 +689,33 @@ defmodule IPCrypt.Kiasu do
   defp expand_key(key) when byte_size(key) == 16 do
     round_keys = [key]
 
-    0..9
-    |> Enum.reduce(round_keys, fn i, acc ->
-      prev_key = List.last(acc)
-      <<_::binary-size(12), temp::binary-size(4)>> = prev_key
-      temp = rot_word(temp) |> sub_bytes()
-      <<first_byte, rest::binary-size(3)>> = temp
-      temp = <<Bitwise.bxor(first_byte, Enum.at(@rcon, i)), rest::binary>>
+    result =
+      0..9
+      |> Enum.reduce(round_keys, fn i, acc ->
+        prev_key = List.last(acc)
+        <<_::binary-size(12), temp::binary-size(4)>> = prev_key
+        temp = rot_word(temp) |> sub_bytes()
+        <<first_byte, rest::binary-size(3)>> = temp
+        temp = <<Bitwise.bxor(first_byte, elem(@rcon, i)), rest::binary>>
 
-      new_key = generate_new_key(prev_key, temp)
+        new_key = generate_new_key(prev_key, temp)
 
-      acc ++ [new_key]
-    end)
+        acc ++ [new_key]
+      end)
+
+    # Convert to tuple for O(1) access
+    List.to_tuple(result)
   end
 
   defp generate_new_key(prev_key, temp) do
-    0..3
-    |> Enum.reduce(<<>>, fn j, key_acc ->
-      word = :binary.part(prev_key, {j * 4, 4})
-      word = if j == 0, do: xor_bytes(word, temp), else: xor_with_prev_word(key_acc, word, j)
-      key_acc <> word
-    end)
-  end
+    <<w0::binary-size(4), w1::binary-size(4), w2::binary-size(4), w3::binary-size(4)>> = prev_key
 
-  defp xor_with_prev_word(key_acc, word, j) do
-    <<prev_word::binary-size(4)>> = :binary.part(key_acc, {(j - 1) * 4, 4})
-    xor_bytes(word, prev_word)
+    nw0 = xor_bytes(w0, temp)
+    nw1 = xor_bytes(w1, nw0)
+    nw2 = xor_bytes(w2, nw1)
+    nw3 = xor_bytes(w3, nw2)
+
+    <<nw0::binary, nw1::binary, nw2::binary, nw3::binary>>
   end
 
   defp pad_tweak(tweak) when byte_size(tweak) == 8 do
@@ -709,106 +736,95 @@ defmodule IPCrypt.Kiasu do
     <<s0, s13, s10, s7, s4, s1, s14, s11, s8, s5, s2, s15, s12, s9, s6, s3>>
   end
 
-  defp mix_columns(state) do
-    state
-    |> :binary.bin_to_list()
-    |> Enum.chunk_every(4)
-    |> Enum.map(fn [s0, s1, s2, s3] ->
-      [
-        Bitwise.bxor(
-          Bitwise.bxor(Bitwise.bxor(Enum.at(@mul2, s0), Enum.at(@mul3, s1)), s2),
-          s3
-        ),
-        Bitwise.bxor(
-          Bitwise.bxor(Bitwise.bxor(s0, Enum.at(@mul2, s1)), Enum.at(@mul3, s2)),
-          s3
-        ),
-        Bitwise.bxor(
-          Bitwise.bxor(Bitwise.bxor(s0, s1), Enum.at(@mul2, s2)),
-          Enum.at(@mul3, s3)
-        ),
-        Bitwise.bxor(
-          Bitwise.bxor(Bitwise.bxor(Enum.at(@mul3, s0), s1), s2),
-          Enum.at(@mul2, s3)
-        )
-      ]
-    end)
-    |> List.flatten()
-    |> :binary.list_to_bin()
+  # Mix columns using binary comprehension
+  defp mix_columns(<<c0, c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14, c15>>) do
+    <<
+      Bitwise.bxor(Bitwise.bxor(Bitwise.bxor(elem(@mul2, c0), elem(@mul3, c1)), c2), c3),
+      Bitwise.bxor(Bitwise.bxor(Bitwise.bxor(c0, elem(@mul2, c1)), elem(@mul3, c2)), c3),
+      Bitwise.bxor(Bitwise.bxor(Bitwise.bxor(c0, c1), elem(@mul2, c2)), elem(@mul3, c3)),
+      Bitwise.bxor(Bitwise.bxor(Bitwise.bxor(elem(@mul3, c0), c1), c2), elem(@mul2, c3)),
+      Bitwise.bxor(Bitwise.bxor(Bitwise.bxor(elem(@mul2, c4), elem(@mul3, c5)), c6), c7),
+      Bitwise.bxor(Bitwise.bxor(Bitwise.bxor(c4, elem(@mul2, c5)), elem(@mul3, c6)), c7),
+      Bitwise.bxor(Bitwise.bxor(Bitwise.bxor(c4, c5), elem(@mul2, c6)), elem(@mul3, c7)),
+      Bitwise.bxor(Bitwise.bxor(Bitwise.bxor(elem(@mul3, c4), c5), c6), elem(@mul2, c7)),
+      Bitwise.bxor(Bitwise.bxor(Bitwise.bxor(elem(@mul2, c8), elem(@mul3, c9)), c10), c11),
+      Bitwise.bxor(Bitwise.bxor(Bitwise.bxor(c8, elem(@mul2, c9)), elem(@mul3, c10)), c11),
+      Bitwise.bxor(Bitwise.bxor(Bitwise.bxor(c8, c9), elem(@mul2, c10)), elem(@mul3, c11)),
+      Bitwise.bxor(Bitwise.bxor(Bitwise.bxor(elem(@mul3, c8), c9), c10), elem(@mul2, c11)),
+      Bitwise.bxor(Bitwise.bxor(Bitwise.bxor(elem(@mul2, c12), elem(@mul3, c13)), c14), c15),
+      Bitwise.bxor(Bitwise.bxor(Bitwise.bxor(c12, elem(@mul2, c13)), elem(@mul3, c14)), c15),
+      Bitwise.bxor(Bitwise.bxor(Bitwise.bxor(c12, c13), elem(@mul2, c14)), elem(@mul3, c15)),
+      Bitwise.bxor(Bitwise.bxor(Bitwise.bxor(elem(@mul3, c12), c13), c14), elem(@mul2, c15))
+    >>
   end
 
-  defp inv_mix_columns(state) do
-    mul = &multiply_gf/2
-
-    state
-    |> :binary.bin_to_list()
-    |> Enum.chunk_every(4)
-    |> Enum.map(fn col ->
-      [
-        calculate_first_result(mul, col),
-        calculate_second_result(mul, col),
-        calculate_third_result(mul, col),
-        calculate_fourth_result(mul, col)
-      ]
-    end)
-    |> List.flatten()
-    |> :binary.list_to_bin()
-  end
-
-  defp multiply_gf(a, b) do
-    p = 0
-
-    {result, _} =
-      0..7
-      |> Enum.reduce({p, {a, b}}, fn _, {p_acc, {a_acc, b_acc}} ->
-        p_acc = if (b_acc &&& 1) != 0, do: Bitwise.bxor(p_acc, a_acc), else: p_acc
-        hi_bit_set = (a_acc &&& 0x80) != 0
-        a_acc = a_acc <<< 1
-        a_acc = if hi_bit_set, do: Bitwise.bxor(a_acc, 0x1B), else: a_acc
-        b_acc = b_acc >>> 1
-        {p_acc, {a_acc &&& 0xFF, b_acc}}
-      end)
-
-    result &&& 0xFF
-  end
-
-  defp calculate_first_result(mul, col) do
-    Bitwise.bxor(
+  # Inverse mix columns using precomputed tables
+  defp inv_mix_columns(<<c0, c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14, c15>>) do
+    <<
       Bitwise.bxor(
-        Bitwise.bxor(mul.(0x0E, Enum.at(col, 0)), mul.(0x0B, Enum.at(col, 1))),
-        mul.(0x0D, Enum.at(col, 2))
+        Bitwise.bxor(Bitwise.bxor(elem(@mul14, c0), elem(@mul11, c1)), elem(@mul13, c2)),
+        elem(@mul9, c3)
       ),
-      mul.(0x09, Enum.at(col, 3))
-    )
-  end
-
-  defp calculate_second_result(mul, col) do
-    Bitwise.bxor(
       Bitwise.bxor(
-        Bitwise.bxor(mul.(0x09, Enum.at(col, 0)), mul.(0x0E, Enum.at(col, 1))),
-        mul.(0x0B, Enum.at(col, 2))
+        Bitwise.bxor(Bitwise.bxor(elem(@mul9, c0), elem(@mul14, c1)), elem(@mul11, c2)),
+        elem(@mul13, c3)
       ),
-      mul.(0x0D, Enum.at(col, 3))
-    )
-  end
-
-  defp calculate_third_result(mul, col) do
-    Bitwise.bxor(
       Bitwise.bxor(
-        Bitwise.bxor(mul.(0x0D, Enum.at(col, 0)), mul.(0x09, Enum.at(col, 1))),
-        mul.(0x0E, Enum.at(col, 2))
+        Bitwise.bxor(Bitwise.bxor(elem(@mul13, c0), elem(@mul9, c1)), elem(@mul14, c2)),
+        elem(@mul11, c3)
       ),
-      mul.(0x0B, Enum.at(col, 3))
-    )
-  end
-
-  defp calculate_fourth_result(mul, col) do
-    Bitwise.bxor(
       Bitwise.bxor(
-        Bitwise.bxor(mul.(0x0B, Enum.at(col, 0)), mul.(0x0D, Enum.at(col, 1))),
-        mul.(0x09, Enum.at(col, 2))
+        Bitwise.bxor(Bitwise.bxor(elem(@mul11, c0), elem(@mul13, c1)), elem(@mul9, c2)),
+        elem(@mul14, c3)
       ),
-      mul.(0x0E, Enum.at(col, 3))
-    )
+      Bitwise.bxor(
+        Bitwise.bxor(Bitwise.bxor(elem(@mul14, c4), elem(@mul11, c5)), elem(@mul13, c6)),
+        elem(@mul9, c7)
+      ),
+      Bitwise.bxor(
+        Bitwise.bxor(Bitwise.bxor(elem(@mul9, c4), elem(@mul14, c5)), elem(@mul11, c6)),
+        elem(@mul13, c7)
+      ),
+      Bitwise.bxor(
+        Bitwise.bxor(Bitwise.bxor(elem(@mul13, c4), elem(@mul9, c5)), elem(@mul14, c6)),
+        elem(@mul11, c7)
+      ),
+      Bitwise.bxor(
+        Bitwise.bxor(Bitwise.bxor(elem(@mul11, c4), elem(@mul13, c5)), elem(@mul9, c6)),
+        elem(@mul14, c7)
+      ),
+      Bitwise.bxor(
+        Bitwise.bxor(Bitwise.bxor(elem(@mul14, c8), elem(@mul11, c9)), elem(@mul13, c10)),
+        elem(@mul9, c11)
+      ),
+      Bitwise.bxor(
+        Bitwise.bxor(Bitwise.bxor(elem(@mul9, c8), elem(@mul14, c9)), elem(@mul11, c10)),
+        elem(@mul13, c11)
+      ),
+      Bitwise.bxor(
+        Bitwise.bxor(Bitwise.bxor(elem(@mul13, c8), elem(@mul9, c9)), elem(@mul14, c10)),
+        elem(@mul11, c11)
+      ),
+      Bitwise.bxor(
+        Bitwise.bxor(Bitwise.bxor(elem(@mul11, c8), elem(@mul13, c9)), elem(@mul9, c10)),
+        elem(@mul14, c11)
+      ),
+      Bitwise.bxor(
+        Bitwise.bxor(Bitwise.bxor(elem(@mul14, c12), elem(@mul11, c13)), elem(@mul13, c14)),
+        elem(@mul9, c15)
+      ),
+      Bitwise.bxor(
+        Bitwise.bxor(Bitwise.bxor(elem(@mul9, c12), elem(@mul14, c13)), elem(@mul11, c14)),
+        elem(@mul13, c15)
+      ),
+      Bitwise.bxor(
+        Bitwise.bxor(Bitwise.bxor(elem(@mul13, c12), elem(@mul9, c13)), elem(@mul14, c14)),
+        elem(@mul11, c15)
+      ),
+      Bitwise.bxor(
+        Bitwise.bxor(Bitwise.bxor(elem(@mul11, c12), elem(@mul13, c13)), elem(@mul9, c14)),
+        elem(@mul14, c15)
+      )
+    >>
   end
 end

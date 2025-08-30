@@ -23,7 +23,8 @@ defmodule IPCrypt.MixProject do
   defp deps do
     [
       {:ex_doc, "~> 0.27", only: :dev, runtime: false},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:benchee, "~> 1.0", only: :dev}
     ]
   end
 
