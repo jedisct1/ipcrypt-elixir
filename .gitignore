@@ -1,0 +1,38 @@
+# Dependencies
+/deps
+/_build
+/lib/*/ebin
+/lib/*/priv
+/lib/*/test/tmp
+
+# Temporary files
+*.swp
+*.swo
+*~
+*.beam
+*.dump
+.erlang.cookie
+
+# Logs
+*.log
+
+# Test results
+cover/
+cover.html
+cover.spec
+
+# Documentation
+/doc
+.edoc
+
+# IDE
+/.idea
+/.vscode
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Elixir
+*.ez
