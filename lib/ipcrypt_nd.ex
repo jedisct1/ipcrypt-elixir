@@ -48,7 +48,8 @@ defmodule IPCrypt.Nd do
   ## Returns
   - Original IP address as a string
   """
-  def decrypt(encrypted_data, key) when byte_size(encrypted_data) == 24 and byte_size(key) == 16 do
+  def decrypt(encrypted_data, key)
+      when byte_size(encrypted_data) == 24 and byte_size(key) == 16 do
     # Split into tweak and ciphertext
     <<tweak::binary-size(8), ciphertext::binary-size(16)>> = encrypted_data
 

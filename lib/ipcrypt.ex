@@ -27,6 +27,7 @@ defmodule IPCrypt do
   - Encrypted data (string for deterministic, binary for nd and ndx)
   """
   def encrypt(ip, key, method, tweak \\ nil)
+
   def encrypt(ip, key, :deterministic, _tweak) do
     Deterministic.encrypt(ip, key)
   end
@@ -51,6 +52,7 @@ defmodule IPCrypt do
   - Original IP address as a string
   """
   def decrypt(data, key, method)
+
   def decrypt(encrypted_ip, key, :deterministic) do
     Deterministic.decrypt(encrypted_ip, key)
   end

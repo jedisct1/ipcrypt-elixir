@@ -61,7 +61,7 @@ defmodule IPCrypt.Ndx do
   # Helper functions
 
   def aes_xts_encrypt(key, tweak, plaintext)
-       when byte_size(key) == 32 and byte_size(tweak) == 16 and byte_size(plaintext) == 16 do
+      when byte_size(key) == 32 and byte_size(tweak) == 16 and byte_size(plaintext) == 16 do
     # Split key into two 16-byte keys
     <<k1::binary-size(16), k2::binary-size(16)>> = key
 
@@ -79,7 +79,7 @@ defmodule IPCrypt.Ndx do
   end
 
   def aes_xts_decrypt(key, tweak, ciphertext)
-       when byte_size(key) == 32 and byte_size(tweak) == 16 and byte_size(ciphertext) == 16 do
+      when byte_size(key) == 32 and byte_size(tweak) == 16 and byte_size(ciphertext) == 16 do
     # Split key into two 16-byte keys
     <<k1::binary-size(16), k2::binary-size(16)>> = key
 

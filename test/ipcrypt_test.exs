@@ -136,7 +136,9 @@ defmodule IPCrypt.Test do
         # Test full encryption/decryption
         # For this test, we need to use a fixed tweak to match the expected output
         # In practice, a random tweak would be generated
-        <<actual_tweak::binary-size(16), _::binary>> = Base.decode16!(String.upcase(expected_output))
+        <<actual_tweak::binary-size(16), _::binary>> =
+          Base.decode16!(String.upcase(expected_output))
+
         encrypted_data = actual_tweak <> ciphertext
         decrypted_ip = Ndx.decrypt(encrypted_data, key)
         assert decrypted_ip == ip
