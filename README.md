@@ -1,6 +1,6 @@
 # IPCrypt Elixir Implementation
 
-This is an Elixir implementation of the IPCrypt specification for IP address encryption and obfuscation.
+This is an Elixir implementation of the [IPCrypt](https://ipcrypt-std.github.io/) specification for IP address encryption and obfuscation.
 
 ## Features
 
