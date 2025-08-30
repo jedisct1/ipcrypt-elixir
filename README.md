@@ -15,7 +15,7 @@ Add `ipcrypt` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:ipcrypt, "~> 0.1.0"}
+    {:ipcrypt, "~> 0.2.0"}
   ]
 end
 ```
