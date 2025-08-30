@@ -3,9 +3,9 @@ defmodule IPCrypt.Test do
   doctest IPCrypt
 
   alias IPCrypt.Deterministic
+  alias IPCrypt.Kiasu
   alias IPCrypt.Nd
   alias IPCrypt.Ndx
-  alias IPCrypt.Kiasu
 
   @test_vectors [
     # ipcrypt-deterministic test vectors

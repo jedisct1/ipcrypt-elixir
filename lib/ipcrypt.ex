@@ -32,12 +32,24 @@ defmodule IPCrypt do
     Deterministic.encrypt(ip, key)
   end
 
-  def encrypt(ip, key, :nd, tweak) when byte_size(key) == 16 do
-    Nd.encrypt(ip, key, tweak)
+  def encrypt(ip, key, :nd, tweak) do
+    if byte_size(key) != 16 do
+      {:error, "Key must be 16 bytes for ipcrypt-nd"}
+    else
+      if is_nil(tweak) do
+        Nd.encrypt(ip, key)
+      else
+        Nd.encrypt(ip, key, tweak)
+      end
+    end
   end
 
   def encrypt(ip, key, :ndx, _tweak) do
-    Ndx.encrypt(ip, key)
+    if byte_size(key) != 32 do
+      {:error, "Key must be 32 bytes for ipcrypt-ndx"}
+    else
+      Ndx.encrypt(ip, key)
+    end
   end
 
   @doc """
@@ -54,14 +66,26 @@ defmodule IPCrypt do
   def decrypt(data, key, method)
 
   def decrypt(encrypted_ip, key, :deterministic) do
-    Deterministic.decrypt(encrypted_ip, key)
+    if byte_size(key) != 16 do
+      {:error, "Key must be 16 bytes for ipcrypt-deterministic"}
+    else
+      Deterministic.decrypt(encrypted_ip, key)
+    end
   end
 
   def decrypt(encrypted_data, key, :nd) do
-    Nd.decrypt(encrypted_data, key)
+    if byte_size(key) != 16 do
+      {:error, "Key must be 16 bytes for ipcrypt-nd"}
+    else
+      Nd.decrypt(encrypted_data, key)
+    end
   end
 
   def decrypt(binary_output, key, :ndx) do
-    Ndx.decrypt(binary_output, key)
+    if byte_size(key) != 32 do
+      {:error, "Key must be 32 bytes for ipcrypt-ndx"}
+    else
+      Ndx.decrypt(binary_output, key)
+    end
   end
 end

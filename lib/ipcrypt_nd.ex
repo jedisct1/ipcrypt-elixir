@@ -17,6 +17,14 @@ defmodule IPCrypt.Nd do
   ## Returns
   - 24-byte binary (8-byte tweak || 16-byte ciphertext)
   """
+  def encrypt(ip_address, key, tweak \\ nil)
+
+  def encrypt(ip_address, key, nil) when byte_size(key) == 16 do
+    # Generate random 8-byte tweak
+    tweak = :crypto.strong_rand_bytes(8)
+    encrypt(ip_address, key, tweak)
+  end
+
   def encrypt(ip_address, key, tweak) when byte_size(key) == 16 and byte_size(tweak) == 8 do
     # Convert IP to bytes
     ip_bytes = Utils.ip_to_bytes(ip_address)
@@ -32,10 +40,8 @@ defmodule IPCrypt.Nd do
     {:error, "Key must be 16 bytes"}
   end
 
-  def encrypt(ip_address, key) when byte_size(key) == 16 do
-    # Generate random 8-byte tweak
-    tweak = :crypto.strong_rand_bytes(8)
-    encrypt(ip_address, key, tweak)
+  def encrypt(_ip_address, _key, tweak) when not is_nil(tweak) and byte_size(tweak) != 8 do
+    {:error, "Tweak must be 8 bytes or nil"}
   end
 
   @doc """
