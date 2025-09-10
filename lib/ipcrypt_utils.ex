@@ -62,9 +62,15 @@ defmodule IPCrypt.Utils do
   end
 
   defp format_ipv6(ip_tuple) do
-    ip_tuple
-    |> Tuple.to_list()
-    |> Enum.map_join(":", &Integer.to_string(&1, 16))
+    # Use :inet.ntoa for proper IPv6 formatting according to RFC 5952
+    case :inet.ntoa(ip_tuple) do
+      charlist when is_list(charlist) ->
+        to_string(charlist)
+
+      _ ->
+        # This should never happen with valid IPv6 addresses
+        raise "Failed to format IPv6 address: #{inspect(ip_tuple)}"
+    end
     |> String.downcase()
   end
 end
